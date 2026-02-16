@@ -38,8 +38,8 @@ LM_MODEL_PATH=""
 # LM_MODEL_PATH="--lm-model-path acestep-5Hz-lm-0.6B"
 
 # Update check on startup (set to "false" to disable)
-CHECK_UPDATE="true"
-# CHECK_UPDATE="false"
+# CHECK_UPDATE="true"
+CHECK_UPDATE="false"
 
 # Skip model loading at startup (models will be lazy-loaded on first request)
 # Set to "true" to start server quickly without loading models
