@@ -3,7 +3,7 @@
 Provides OpenAI Chat Completions API format for text-to-music generation.
 
 Endpoints:
-- GET  /api/v1/models       List available models with pricing
+- GET  /v1/models       List available models with pricing
 - POST /v1/chat/completions Generate music from text prompt
 - GET  /health              Health check
 
@@ -52,7 +52,7 @@ from acestep.inference import (
 # Constants
 # =============================================================================
 
-MODEL_ID = "acemusic/acestep-v1.5-turbo"
+MODEL_ID = "acemusic/acestep-v15-turbo"
 MODEL_NAME = "ACE-Step"
 MODEL_CREATED = 1706688000  # Unix timestamp
 
@@ -532,6 +532,7 @@ def create_app() -> FastAPI:
         use_flash_attention = _env_bool("ACESTEP_USE_FLASH_ATTENTION", True)
         offload_to_cpu = _env_bool("ACESTEP_OFFLOAD_TO_CPU", False)
         offload_dit_to_cpu = _env_bool("ACESTEP_OFFLOAD_DIT_TO_CPU", False)
+        compile_model = _env_bool("ACESTEP_COMPILE_MODEL", False)
 
         # Initialize DiT model
         print(f"[OpenRouter API] Loading DiT model: {config_path}")
@@ -540,7 +541,7 @@ def create_app() -> FastAPI:
             config_path=config_path,
             device=device,
             use_flash_attention=use_flash_attention,
-            compile_model=False,
+            compile_model=compile_model,
             offload_to_cpu=offload_to_cpu,
             offload_dit_to_cpu=offload_dit_to_cpu,
         )
@@ -596,7 +597,7 @@ def create_app() -> FastAPI:
     # Endpoints
     # -------------------------------------------------------------------------
     
-    @app.get("/api/v1/models", response_model=ModelsResponse)
+    @app.get("/v1/models", response_model=ModelsResponse)
     async def list_models(_: None = Depends(verify_api_key)) -> ModelsResponse:
         """List available models with capabilities and pricing."""
         return ModelsResponse(
@@ -823,14 +824,29 @@ def create_app() -> FastAPI:
                 timesteps=default_timesteps,
             )
 
-            # Resolve seed
+            # Resolve seed(s): parse into Optional[List[int]] for GenerationConfig.seeds
             use_random_seed = request.seed is None
-            resolved_seed = request.seed if request.seed is not None else -1
+            resolved_seeds = None
+            if request.seed is not None:
+                if isinstance(request.seed, int):
+                    resolved_seeds = [request.seed]
+                elif isinstance(request.seed, str):
+                    resolved_seeds = []
+                    for s in request.seed.split(","):
+                        s = s.strip()
+                        if s:
+                            try:
+                                resolved_seeds.append(int(s))
+                            except ValueError:
+                                pass
+                    if not resolved_seeds:
+                        resolved_seeds = None
+                        use_random_seed = True
 
             config = GenerationConfig(
                 batch_size=request.batch_size or 1,
                 use_random_seed=use_random_seed,
-                seed=resolved_seed,
+                seeds=resolved_seeds,
                 audio_format=audio_config.format or "mp3",
             )
 
