@@ -523,7 +523,7 @@ def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_
             with gr.Row():
                 offload_checkbox = gr.Checkbox(
                     label="Offload to CPU (save VRAM)",
-                    value=init_params.get("offload_to_cpu", True) if init_params else True,
+                    value=init_params.get("offload_to_cpu", False) if init_params else False,
                 )
                 flash_attn_checkbox = gr.Checkbox(
                     label="Use Flash Attention",
@@ -787,7 +787,7 @@ def main():
     init_params = {
         "gpu_config": gpu_config,
         "init_llm": True,
-        "offload_to_cpu": True,
+        "offload_to_cpu": False,
         "use_flash_attention": dit_handler.is_flash_attention_available(),
     }
 
