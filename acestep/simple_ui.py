@@ -9,6 +9,9 @@ import json
 import random
 import argparse
 import tempfile
+import time
+import urllib.parse
+import urllib.request
 from typing import Optional
 
 # Load environment variables from .env file
@@ -38,6 +41,10 @@ from acestep.constants import TASK_TYPES_TURBO, TASK_TYPES_BASE, VALID_LANGUAGES
 from acestep.gpu_config import get_gpu_config, set_global_gpu_config
 
 
+DEFAULT_API_BASE_URL = os.getenv("ACESTEP_SIMPLE_UI_API_BASE_URL", "").strip()
+DEFAULT_API_KEY = os.getenv("ACESTEP_API_KEY", "").strip() or None
+
+
 # Custom CSS for a clean, professional look
 CUSTOM_CSS = """
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -46,22 +53,31 @@ CUSTOM_CSS = """
     --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --color-primary: #6366F1;
     --color-primary-hover: #4F46E5;
-    --color-bg: #FAFAFA;
-    --color-surface: #FFFFFF;
-    --color-border: #E5E7EB;
-    --color-text: #1F2937;
-    --color-text-secondary: #6B7280;
+    --color-bg: #111827;
+    --color-surface: #1F2937;
+    --color-border: #374151;
+    --color-text: #F9FAFB;
+    --color-text-secondary: #D1D5DB;
 }
 
-/* Dark mode support */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --color-bg: #111827;
-        --color-surface: #1F2937;
-        --color-border: #374151;
-        --color-text: #F9FAFB;
-        --color-text-secondary: #D1D5DB;
-    }
+/* Force Gradio to dark mode regardless of system/browser preference */
+.gradio-container,
+.gradio-container.light,
+.gradio-container.dark {
+    color-scheme: dark !important;
+    --body-background-fill: #111827 !important;
+    --body-background-fill-subdued: #0F172A !important;
+    --background-fill-primary: #1F2937 !important;
+    --background-fill-secondary: #111827 !important;
+    --block-background-fill: #1F2937 !important;
+    --block-border-color: #374151 !important;
+    --border-color-primary: #374151 !important;
+    --input-background-fill: #111827 !important;
+    --input-border-color: #374151 !important;
+    --input-placeholder-color: #9CA3AF !important;
+    --body-text-color: #F9FAFB !important;
+    --body-text-color-subdued: #D1D5DB !important;
+    --block-label-text-color: #F9FAFB !important;
 }
 
 * {
@@ -159,6 +175,28 @@ body {
     border-radius: 0.5rem !important;
 }
 
+.gr-audio label,
+.gr-audio .label-wrap,
+.gr-audio .label-wrap span,
+.gr-audio .label-wrap p {
+    color: var(--color-text) !important;
+    opacity: 1 !important;
+}
+
+.gr-audio button,
+.gr-audio [role="button"] {
+    color: var(--color-text) !important;
+    border-color: var(--color-border) !important;
+    background-color: var(--color-surface) !important;
+}
+
+.gr-audio .wrap,
+.gr-audio .container,
+.gr-audio .empty {
+    background-color: var(--color-surface) !important;
+    border-color: var(--color-border) !important;
+}
+
 .status-box {
     font-family: 'SF Mono', Monaco, monospace !important;
     font-size: 0.8125rem !important;
@@ -234,8 +272,145 @@ label {
 """
 
 
-def load_random_example(task_type: str):
-    """Load a random example from examples directory"""
+def _normalize_api_base_url(api_base_url: Optional[str]) -> Optional[str]:
+    """Normalize API base URL for consistent endpoint composition."""
+    if not api_base_url:
+        return None
+    normalized = api_base_url.strip().rstrip("/")
+    return normalized or None
+
+
+def _build_auth_headers(api_key: Optional[str]) -> dict:
+    """Build optional authorization headers for API requests."""
+    if not api_key:
+        return {}
+    return {"Authorization": f"Bearer {api_key}"}
+
+
+def _api_post_json(api_base_url: str, endpoint: str, payload: dict, api_key: Optional[str] = None, timeout: int = 180) -> dict:
+    """POST JSON payload to ACE-Step API and return parsed wrapped response."""
+    url = f"{api_base_url}{endpoint}"
+    req = urllib.request.Request(
+        url=url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", **_build_auth_headers(api_key)},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _api_get_bytes(api_base_url: str, endpoint: str, query: dict, api_key: Optional[str] = None, timeout: int = 180) -> bytes:
+    """GET raw bytes from ACE-Step API endpoint with query parameters."""
+    qs = urllib.parse.urlencode(query)
+    url = f"{api_base_url}{endpoint}?{qs}"
+    req = urllib.request.Request(
+        url=url,
+        headers=_build_auth_headers(api_key),
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read()
+
+
+def _http_get_bytes(url: str, api_key: Optional[str] = None, timeout: int = 180) -> bytes:
+    """GET raw bytes from a fully-qualified or resolved URL."""
+    req = urllib.request.Request(
+        url=url,
+        headers=_build_auth_headers(api_key),
+        method="GET",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as response:
+        return response.read()
+
+
+def _unwrap_api_response(response: dict) -> dict:
+    """Unwrap ACE-Step standard response envelope and raise for API-level errors."""
+    if not isinstance(response, dict):
+        raise RuntimeError("Invalid API response format")
+    code = response.get("code", 500)
+    if code != 200:
+        raise RuntimeError(response.get("error") or f"API call failed with code {code}")
+    return response.get("data")
+
+
+def _download_api_audio(api_base_url: str, api_key: Optional[str], source_path: str) -> str:
+    """Resolve API-produced audio path to a local file path for Gradio playback."""
+    if not source_path:
+        raise RuntimeError("Empty audio path from API")
+
+    source_path = str(source_path).strip()
+
+    if source_path and os.path.exists(source_path):
+        return source_path
+
+    parsed_ref = urllib.parse.urlparse(source_path)
+    raw_audio: bytes
+    resolved_audio_path = source_path
+
+    # Case 1: absolute URL returned by API (already points to /v1/audio)
+    if parsed_ref.scheme in {"http", "https"}:
+        raw_audio = _http_get_bytes(source_path, api_key=api_key)
+        if parsed_ref.path.endswith("/v1/audio"):
+            query_path = urllib.parse.parse_qs(parsed_ref.query).get("path", [resolved_audio_path])[0]
+            resolved_audio_path = urllib.parse.unquote(query_path)
+
+    # Case 2: relative API path like /v1/audio?path=%2Ftmp%2F...
+    elif source_path.startswith("/v1/audio"):
+        query_path = urllib.parse.parse_qs(parsed_ref.query).get("path", [""])[0]
+        if query_path:
+            resolved_audio_path = urllib.parse.unquote(query_path)
+        audio_url = f"{api_base_url}{source_path}"
+        raw_audio = _http_get_bytes(audio_url, api_key=api_key)
+
+    # Case 3: plain filesystem path from API result
+    else:
+        raw_audio = _api_get_bytes(
+            api_base_url=api_base_url,
+            endpoint="/v1/audio",
+            query={"path": source_path},
+            api_key=api_key,
+        )
+
+    ext = os.path.splitext(resolved_audio_path)[1] or ".mp3"
+    out_dir = os.path.join(tempfile.gettempdir(), "ace_step_ui_downloads")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, f"api_{int(time.time() * 1000)}_{random.randint(1000, 9999)}{ext}")
+    with open(out_path, "wb") as f:
+        f.write(raw_audio)
+    return out_path
+
+
+def load_random_example(task_type: str, api_base_url: Optional[str] = None, api_key: Optional[str] = None):
+    """Load a random example from API or local examples directory."""
+    normalized_api_url = _normalize_api_base_url(api_base_url)
+    if normalized_api_url:
+        try:
+            response = _api_post_json(
+                api_base_url=normalized_api_url,
+                endpoint="/create_random_sample",
+                payload={"sample_type": "custom_mode"},
+                api_key=api_key,
+            )
+            data = _unwrap_api_response(response) or {}
+
+            bpm = data.get("bpm")
+            duration = data.get("duration")
+            keyscale = data.get("keyscale", data.get("key_scale", ""))
+            timesignature = data.get("timesignature", data.get("time_signature", ""))
+
+            gr.Info("Loaded random example from API")
+            return (
+                data.get("caption", data.get("prompt", "")),
+                data.get("lyrics", ""),
+                bpm,
+                duration if duration is not None else -1,
+                keyscale,
+                timesignature,
+            )
+        except Exception as e:
+            gr.Warning(f"API example load failed, falling back to local examples: {e}")
+
     try:
         project_root = os.path.dirname(os.path.abspath(__file__))
         examples_dir = os.path.join(project_root, "..", "examples", task_type)
@@ -279,11 +454,15 @@ def load_random_example(task_type: str):
         return "", "", None, None, "", ""
 
 
-def generate_caption_with_llm(llm_handler, task_type: str):
-    """Generate a caption using the LLM"""
+def generate_caption_with_llm(llm_handler, task_type: str, api_base_url: Optional[str] = None, api_key: Optional[str] = None):
+    """Generate caption/lyrics using local LLM or API-backed random sample."""
+    normalized_api_url = _normalize_api_base_url(api_base_url)
+    if normalized_api_url:
+        return load_random_example(task_type=task_type, api_base_url=normalized_api_url, api_key=api_key)
+
     if not llm_handler.llm_initialized:
         # Fall back to random example
-        return load_random_example(task_type)
+        return load_random_example(task_type, api_base_url=api_base_url, api_key=api_key)
 
     try:
         result = understand_music(
@@ -305,15 +484,65 @@ def generate_caption_with_llm(llm_handler, task_type: str):
             )
         else:
             gr.Warning("AI caption generation failed, using example instead")
-            return load_random_example(task_type)
+            return load_random_example(task_type, api_base_url=api_base_url, api_key=api_key)
 
     except Exception as e:
         gr.Warning(f"AI generation error: {e}")
-        return load_random_example(task_type)
+        return load_random_example(task_type, api_base_url=api_base_url, api_key=api_key)
 
 
-def format_lyrics_with_llm(llm_handler, caption: str, lyrics: str, bpm, duration, keyscale, timesig):
-    """Format lyrics and caption using LLM"""
+def format_lyrics_with_llm(
+    llm_handler,
+    caption: str,
+    lyrics: str,
+    bpm,
+    duration,
+    keyscale,
+    timesig,
+    api_base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
+):
+    """Format lyrics and caption using local LLM or remote API."""
+    normalized_api_url = _normalize_api_base_url(api_base_url)
+    if normalized_api_url:
+        try:
+            param_obj = {}
+            if bpm is not None and str(bpm).strip():
+                param_obj["bpm"] = int(bpm)
+            if duration is not None and str(duration).strip() and float(duration) > 0:
+                param_obj["duration"] = float(duration)
+            if keyscale and keyscale.strip():
+                param_obj["key_scale"] = keyscale.strip()
+            if timesig and timesig.strip():
+                param_obj["time_signature"] = timesig.strip()
+
+            payload = {
+                "prompt": caption,
+                "lyrics": lyrics,
+                "temperature": 0.85,
+                "param_obj": param_obj,
+            }
+            response = _api_post_json(
+                api_base_url=normalized_api_url,
+                endpoint="/format_input",
+                payload=payload,
+                api_key=api_key,
+            )
+            data = _unwrap_api_response(response) or {}
+
+            gr.Info("Formatted with API")
+            return (
+                data.get("caption", caption),
+                data.get("lyrics", lyrics),
+                data.get("bpm", bpm),
+                data.get("duration", duration),
+                data.get("key_scale", data.get("keyscale", keyscale)),
+                data.get("time_signature", data.get("timesignature", timesig)),
+            )
+        except Exception as e:
+            gr.Warning(f"API format error: {e}")
+            return caption, lyrics, bpm, duration, keyscale, timesig
+
     if not llm_handler.llm_initialized:
         gr.Warning("LLM not initialized - cannot format")
         return caption, lyrics, bpm, duration, keyscale, timesig
@@ -388,9 +617,92 @@ def run_generation(
     bpm,
     keyscale: str,
     timesignature: str,
+    api_base_url: Optional[str] = None,
+    api_key: Optional[str] = None,
     progress=gr.Progress(),
 ):
-    """Run the music generation"""
+    """Run music generation locally or through remote API."""
+    normalized_api_url = _normalize_api_base_url(api_base_url)
+    if normalized_api_url:
+        try:
+            seed_val = int(seed) if seed.strip() != "-1" else random.randint(0, 2**32 - 1)
+            payload = {
+                "prompt": caption,
+                "lyrics": lyrics,
+                "thinking": False,
+                "task_type": task_type,
+                "vocal_language": vocal_language,
+                "inference_steps": int(inference_steps),
+                "guidance_scale": float(guidance_scale),
+                "seed": seed_val,
+                "use_random_seed": False,
+                "batch_size": int(batch_size),
+                "audio_duration": float(duration) if duration is not None and float(duration) > 0 else None,
+                "bpm": int(bpm) if bpm is not None and str(bpm).strip() != "" else None,
+                "key_scale": keyscale or "",
+                "time_signature": timesignature or "",
+                "lm_negative_prompt": negative_prompt.strip() if negative_prompt else "NO USER INPUT",
+                "reference_audio_path": reference_audio if reference_audio else None,
+                "src_audio_path": src_audio if src_audio else None,
+                "repainting_start": repainting_start if task_type in ["repaint", "lego"] else 0.0,
+                "repainting_end": repainting_end if task_type in ["repaint", "lego"] else None,
+            }
+
+            progress(0.1, desc="Submitting generation task to API...")
+            submit_resp = _api_post_json(normalized_api_url, "/release_task", payload, api_key=api_key)
+            submit_data = _unwrap_api_response(submit_resp) or {}
+            task_id = submit_data.get("task_id")
+            if not task_id:
+                raise RuntimeError("API did not return task_id")
+
+            poll_payload = {"task_id_list": json.dumps([task_id])}
+            started_at = time.time()
+            timeout_seconds = 3600
+
+            while True:
+                query_resp = _api_post_json(normalized_api_url, "/query_result", poll_payload, api_key=api_key)
+                query_data = _unwrap_api_response(query_resp) or []
+                if not query_data:
+                    time.sleep(1.0)
+                    continue
+
+                first = query_data[0] or {}
+                status = int(first.get("status", 0))
+                progress_text = first.get("progress_text") or "Processing..."
+
+                if status == 0:
+                    progress(0.2, desc=progress_text)
+                elif status == 2:
+                    result_raw = first.get("result") or "[]"
+                    err_msg = "Generation failed"
+                    try:
+                        parsed = json.loads(result_raw)
+                        if parsed and isinstance(parsed, list):
+                            err_msg = parsed[0].get("error") or err_msg
+                    except Exception:
+                        pass
+                    raise RuntimeError(err_msg)
+                elif status == 1:
+                    result_raw = first.get("result") or "[]"
+                    parsed = json.loads(result_raw)
+                    outputs = []
+                    for item in parsed:
+                        file_path = item.get("file")
+                        if file_path:
+                            try:
+                                outputs.append(_download_api_audio(normalized_api_url, api_key, file_path))
+                            except Exception as download_error:
+                                gr.Warning(f"Failed to fetch output audio: {download_error}")
+                    progress(1.0, desc="Complete!")
+                    return outputs
+
+                if time.time() - started_at > timeout_seconds:
+                    raise RuntimeError("Timed out waiting for generation result")
+                time.sleep(1.0)
+        except Exception as e:
+            gr.Error(f"API generation failed: {str(e)}")
+            return []
+
     if dit_handler.model is None:
         gr.Error("Model not initialized. Please initialize the model first.")
         return []
@@ -475,7 +787,11 @@ def run_generation(
 
 
 def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_params=None):
-    """Create the simplified Gradio UI"""
+    """Create the simplified Gradio UI."""
+
+    api_base_url = _normalize_api_base_url(init_params.get("api_base_url") if init_params else None)
+    api_key = init_params.get("api_key") if init_params else None
+    use_remote_api = bool(api_base_url)
 
     # Get GPU config
     gpu_config = init_params.get("gpu_config") if init_params else get_gpu_config()
@@ -483,8 +799,8 @@ def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_
     max_duration = gpu_config.max_duration_with_lm if lm_initialized else gpu_config.max_duration_without_lm
 
     # Determine if model is pre-initialized
-    model_initialized = dit_handler.model is not None
-    available_models = dit_handler.get_available_acestep_v15_models()
+    model_initialized = True if use_remote_api else dit_handler.model is not None
+    available_models = dit_handler.get_available_acestep_v15_models() if not use_remote_api else []
     default_model = "acestep-v15-base" if "acestep-v15-base" in available_models else (available_models[0] if available_models else None)
 
     with gr.Blocks(title="ACE-Step Music Generator", css=CUSTOM_CSS) as demo:
@@ -495,7 +811,7 @@ def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_
         """)
 
         # Model Configuration Section
-        with gr.Accordion("⚙️ Model Configuration", open=not model_initialized):
+        with gr.Accordion("⚙️ Model Configuration", open=not model_initialized, visible=not use_remote_api):
             with gr.Row():
                 model_dropdown = gr.Dropdown(
                     choices=available_models, value=init_params.get("config_path", default_model) if init_params else default_model, label="Model", info="Select the generation model"
@@ -680,7 +996,8 @@ def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_
 
             return "\n".join(status_parts), gr.update(interactive=True)
 
-        init_btn.click(fn=init_model, inputs=[model_dropdown, device_dropdown, lm_model_dropdown, init_llm_checkbox, offload_checkbox, flash_attn_checkbox], outputs=[init_status, generate_btn])
+        if not use_remote_api:
+            init_btn.click(fn=init_model, inputs=[model_dropdown, device_dropdown, lm_model_dropdown, init_llm_checkbox, offload_checkbox, flash_attn_checkbox], outputs=[init_status, generate_btn])
 
         # Task type change - show/hide repaint controls
         def on_task_change(task):
@@ -690,11 +1007,25 @@ def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_
         task_type.change(fn=on_task_change, inputs=[task_type], outputs=[repaint_controls])
 
         # Caption generation
-        sample_btn.click(fn=lambda task: generate_caption_with_llm(llm_handler, task), inputs=[task_type], outputs=[caption_text, lyrics_text, bpm_num, duration_num, keyscale_text, timesig_text])
+        sample_btn.click(
+            fn=lambda task: generate_caption_with_llm(llm_handler, task, api_base_url=api_base_url, api_key=api_key),
+            inputs=[task_type],
+            outputs=[caption_text, lyrics_text, bpm_num, duration_num, keyscale_text, timesig_text],
+        )
 
         # Format button
         format_btn.click(
-            fn=lambda cap, lyr, bpm, dur, key, ts: format_lyrics_with_llm(llm_handler, cap, lyr, bpm, dur, key, ts),
+            fn=lambda cap, lyr, bpm, dur, key, ts: format_lyrics_with_llm(
+                llm_handler,
+                cap,
+                lyr,
+                bpm,
+                dur,
+                key,
+                ts,
+                api_base_url=api_base_url,
+                api_key=api_key,
+            ),
             inputs=[caption_text, lyrics_text, bpm_num, duration_num, keyscale_text, timesig_text],
             outputs=[caption_text, lyrics_text, bpm_num, duration_num, keyscale_text, timesig_text],
         )
@@ -704,7 +1035,7 @@ def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_
 
         # Generate button
         def do_generate(*args):
-            outputs = run_generation(dit_handler, llm_handler, *args)
+            outputs = run_generation(dit_handler, llm_handler, *args, api_base_url=api_base_url, api_key=api_key)
             # Prepare audio outputs (3 audio players + 3 download links)
             audio_results = []
             download_results = []
@@ -750,7 +1081,8 @@ def create_simple_ui(dit_handler: AceStepHandler, llm_handler: LLMHandler, init_
             else:
                 return gr.update(choices=TASK_TYPES_BASE)
 
-        model_dropdown.change(fn=on_model_change, inputs=[model_dropdown], outputs=[task_type])
+        if not use_remote_api:
+            model_dropdown.change(fn=on_model_change, inputs=[model_dropdown], outputs=[task_type])
 
     return demo
 
@@ -765,8 +1097,12 @@ def main():
     parser.add_argument("--model", type=str, default="acestep-v15-base", help="Model to use")
     parser.add_argument("--lm-model", type=str, default=None, help="LM model to use")
     parser.add_argument("--root-path", type=str, default=None, help="Root path for serving behind reverse proxy (e.g., /acestep_demo)")
+    parser.add_argument("--api-base-url", type=str, default=DEFAULT_API_BASE_URL, help="Use existing acestep-api server instead of local models (e.g., http://127.0.0.1:8001)")
+    parser.add_argument("--api-key", type=str, default=DEFAULT_API_KEY, help="API key for acestep-api if enabled")
 
     args = parser.parse_args()
+
+    api_base_url = _normalize_api_base_url(args.api_base_url)
 
     # Get GPU config
     gpu_config = get_gpu_config()
@@ -789,10 +1125,12 @@ def main():
         "init_llm": True,
         "offload_to_cpu": False,
         "use_flash_attention": dit_handler.is_flash_attention_available(),
+        "api_base_url": api_base_url,
+        "api_key": args.api_key,
     }
 
-    # Auto-initialize if requested
-    if args.init:
+    # Auto-initialize if requested and not using remote API
+    if args.init and not api_base_url:
         print("Initializing model...")
         checkpoint_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 
@@ -822,6 +1160,11 @@ def main():
             init_params["lm_model_path"] = args.lm_model
 
         print(init_params["init_status"])
+
+    if api_base_url:
+        init_params["init_status"] = f"Using remote API at {api_base_url}"
+        print(f"Using remote API mode: {api_base_url}")
+        print("Local model initialization is disabled in this mode.")
 
     # Create and launch UI
     demo = create_simple_ui(dit_handler, llm_handler, init_params)
