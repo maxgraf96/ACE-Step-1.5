@@ -477,7 +477,7 @@ class GenerateMusicRequest(BaseModel):
     key_scale: str = ""
     time_signature: str = ""
     vocal_language: str = "en"
-    inference_steps: int = 8
+    inference_steps: int = 50
     guidance_scale: float = 7.0
     use_random_seed: bool = True
     seed: Union[int, str] = -1

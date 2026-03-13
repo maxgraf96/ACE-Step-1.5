@@ -324,6 +324,27 @@ def _http_get_bytes(url: str, api_key: Optional[str] = None, timeout: int = 180)
         return response.read()
 
 
+def _sanitize_bpm_for_ui(bpm) -> Optional[int]:
+    """Normalize BPM to UI-safe range for Gradio Number (30-300) or return None."""
+    if bpm is None:
+        return None
+
+    if isinstance(bpm, str):
+        bpm = bpm.strip()
+        if not bpm or bpm.lower() in {"n/a", "na", "auto", "none", "null"}:
+            return None
+
+    try:
+        bpm_value = int(float(bpm))
+    except (TypeError, ValueError):
+        return None
+
+    if bpm_value < 30 or bpm_value > 300:
+        return None
+
+    return bpm_value
+
+
 def _unwrap_api_response(response: dict) -> dict:
     """Unwrap ACE-Step standard response envelope and raise for API-level errors."""
     if not isinstance(response, dict):
@@ -403,7 +424,7 @@ def load_random_example(task_type: str, api_base_url: Optional[str] = None, api_
             return (
                 data.get("caption", data.get("prompt", "")),
                 data.get("lyrics", ""),
-                bpm,
+                _sanitize_bpm_for_ui(bpm),
                 duration if duration is not None else -1,
                 keyscale,
                 timesignature,
@@ -439,6 +460,8 @@ def load_random_example(task_type: str, api_base_url: Optional[str] = None, api_
                 bpm = int(bpm) if bpm and bpm != "N/A" else None
             except:
                 bpm = None
+
+        bpm = _sanitize_bpm_for_ui(bpm)
 
         if isinstance(duration, str):
             try:
@@ -477,7 +500,7 @@ def generate_caption_with_llm(llm_handler, task_type: str, api_base_url: Optiona
             return (
                 result.caption,
                 result.lyrics,
-                result.bpm,
+                _sanitize_bpm_for_ui(result.bpm),
                 result.duration if result.duration and result.duration > 0 else -1,
                 result.keyscale,
                 result.timesignature,
@@ -503,12 +526,13 @@ def format_lyrics_with_llm(
     api_key: Optional[str] = None,
 ):
     """Format lyrics and caption using local LLM or remote API."""
+    sanitized_bpm = _sanitize_bpm_for_ui(bpm)
     normalized_api_url = _normalize_api_base_url(api_base_url)
     if normalized_api_url:
         try:
             param_obj = {}
-            if bpm is not None and str(bpm).strip():
-                param_obj["bpm"] = int(bpm)
+            if sanitized_bpm is not None:
+                param_obj["bpm"] = sanitized_bpm
             if duration is not None and str(duration).strip() and float(duration) > 0:
                 param_obj["duration"] = float(duration)
             if keyscale and keyscale.strip():
@@ -534,24 +558,24 @@ def format_lyrics_with_llm(
             return (
                 data.get("caption", caption),
                 data.get("lyrics", lyrics),
-                data.get("bpm", bpm),
+                _sanitize_bpm_for_ui(data.get("bpm", sanitized_bpm)),
                 data.get("duration", duration),
                 data.get("key_scale", data.get("keyscale", keyscale)),
                 data.get("time_signature", data.get("timesignature", timesig)),
             )
         except Exception as e:
             gr.Warning(f"API format error: {e}")
-            return caption, lyrics, bpm, duration, keyscale, timesig
+            return caption, lyrics, sanitized_bpm, duration, keyscale, timesig
 
     if not llm_handler.llm_initialized:
         gr.Warning("LLM not initialized - cannot format")
-        return caption, lyrics, bpm, duration, keyscale, timesig
+        return caption, lyrics, sanitized_bpm, duration, keyscale, timesig
 
     try:
         # Build user metadata
         user_metadata = {}
-        if bpm is not None and bpm > 0:
-            user_metadata["bpm"] = int(bpm)
+        if sanitized_bpm is not None:
+            user_metadata["bpm"] = sanitized_bpm
         if duration is not None and float(duration) > 0:
             user_metadata["duration"] = int(float(duration))
         if keyscale and keyscale.strip():
@@ -573,18 +597,18 @@ def format_lyrics_with_llm(
             return (
                 result.caption,
                 result.lyrics,
-                result.bpm,
+                _sanitize_bpm_for_ui(result.bpm),
                 result.duration if result.duration and result.duration > 0 else -1,
                 result.keyscale,
                 result.timesignature,
             )
         else:
             gr.Warning("Formatting failed")
-            return caption, lyrics, bpm, duration, keyscale, timesig
+            return caption, lyrics, sanitized_bpm, duration, keyscale, timesig
 
     except Exception as e:
         gr.Warning(f"Format error: {e}")
-        return caption, lyrics, bpm, duration, keyscale, timesig
+        return caption, lyrics, sanitized_bpm, duration, keyscale, timesig
 
 
 def handle_instrumental_toggle(is_instrumental: bool, current_lyrics: str):
