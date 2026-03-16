@@ -163,6 +163,7 @@ class InitServiceMixinTests(unittest.TestCase):
             )
 
         free_mock.assert_called_once_with(1)
+
     def test_move_module_recursive_preserves_parameter_type(self):
         """It preserves ``torch.nn.Parameter`` objects during recursive device moves."""
         host = _Host(project_root="K:/fake_root", device="cpu")
@@ -609,6 +610,7 @@ class InitServiceMixinTests(unittest.TestCase):
         self.assertFalse(observed["encoder"])
         self.assertFalse(observed["tokenizer"])
         self.assertFalse(observed["detokenizer"])
+
     def test_validate_quantization_setup_raises_import_error_when_torchao_missing(self):
         """It raises ImportError with guidance when torchao is unavailable."""
         host = _Host(project_root="K:/fake_root", device="cpu")
