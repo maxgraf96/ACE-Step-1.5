@@ -21,6 +21,7 @@ from transformers.generation.logits_process import (
     LogitsProcessorList,
     RepetitionPenaltyLogitsProcessor,
 )
+from acestep.llm_backend_compat import get_vllm_preflight_warning
 from acestep.constrained_logits_processor import MetadataConstrainedLogitsProcessor
 from acestep.constants import DEFAULT_LM_INSTRUCTION, DEFAULT_LM_UNDERSTAND_INSTRUCTION, DEFAULT_LM_INSPIRED_INSTRUCTION, DEFAULT_LM_REWRITE_INSTRUCTION, DURATION_MIN, DURATION_MAX
 from acestep.gpu_config import get_lm_gpu_memory_ratio, get_gpu_memory_gb, get_lm_model_size, get_global_gpu_config
@@ -636,6 +637,15 @@ class LLMHandler:
                 )
                 backend = "pt"
 
+            vllm_preflight_warning = None
+            if backend == "vllm":
+                vllm_preflight_warning = get_vllm_preflight_warning(device=device)
+                if vllm_preflight_warning is not None:
+                    logger.warning(f"[initialize] {vllm_preflight_warning}")
+                    backend = "pt"
+
+            vllm_fallback_note = None
+
             # Initialize based on user-selected backend
             if backend == "vllm":
                 _warn_if_prerelease_python()
@@ -666,6 +676,8 @@ class LLMHandler:
                     )
                     logger.info(f"5Hz LM status message: {status_msg}")
                     if status_msg.startswith("❌"):
+                        logger.warning(f"vLLM initialization failed before PyTorch fallback: {status_msg}")
+                        vllm_fallback_note = status_msg.splitlines()[0]
                         if not self.llm_initialized:
                             if device == "mps" and self._is_mlx_available():
                                 logger.warning("vllm failed on MPS, trying MLX backend...")
@@ -678,10 +690,14 @@ class LLMHandler:
                             if not success:
                                 return status_msg, False
                             status_msg = f"✅ 5Hz LM initialized successfully (PyTorch fallback)\nModel: {full_lm_model_path}\nBackend: PyTorch"
+                            if vllm_fallback_note is not None:
+                                status_msg += f"\nNote: {vllm_fallback_note}"
             elif backend != "mlx":
                 success, status_msg = self._load_pytorch_model(full_lm_model_path, device)
                 if not success:
                     return status_msg, False
+                if vllm_preflight_warning is not None:
+                    status_msg += f"\nNote: {vllm_preflight_warning}"
 
             return status_msg, True
 
@@ -699,8 +715,8 @@ class LLMHandler:
             from nanovllm import LLM, SamplingParams
         except ImportError:
             self.llm_initialized = False
-            logger.error("nano-vllm is not installed. Please install it using 'cd acestep/third_parts/nano-vllm && pip install .")
-            return "❌ nano-vllm is not installed. Please install it using 'cd acestep/third_parts/nano-vllm && pip install ."
+            logger.error("nano-vllm is not installed. Please install it using 'cd acestep/third_parts/nano-vllm && pip install .'")
+            return "❌ nano-vllm is not installed. Please install it using 'cd acestep/third_parts/nano-vllm && pip install .'"
 
         try:
             current_device = torch.cuda.current_device()
@@ -738,6 +754,14 @@ class LLMHandler:
             return f"✅ 5Hz LM initialized successfully\nModel: {model_path}\nDevice: {device_name}\nGPU Memory Utilization: {gpu_memory_utilization:.3f}\nLow GPU Memory Mode: {low_gpu_memory_mode}"
         except Exception as e:
             self.llm_initialized = False
+            if "Cannot find a working triton installation" in str(e):
+                status_msg = "❌ vLLM backend requires a working Triton installation."
+                if sys.platform == "win32":
+                    status_msg += (
+                        " Falling back to PyTorch is recommended on Windows. "
+                        "Use --backend pt to avoid this warning."
+                    )
+                return status_msg
             return f"❌ Error initializing 5Hz LM: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
 
     def _run_vllm(
