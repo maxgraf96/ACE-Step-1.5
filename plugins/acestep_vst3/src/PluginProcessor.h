@@ -1,7 +1,11 @@
 #pragma once
 
+#include <atomic>
+#include <optional>
+
 #include <JuceHeader.h>
 
+#include "PluginBackendClient.h"
 #include "PluginConfig.h"
 #include "PluginState.h"
 
@@ -37,12 +41,43 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
     const PluginState& getState() const noexcept;
-    void setBackendBaseUrl(juce::String baseUrl);
-    void setSessionNote(juce::String note);
-    juce::String getShellStatusText() const;
+    PluginState& getMutableState() noexcept;
+    void requestGeneration();
+    void selectResultSlot(int index);
+    void pumpBackendWorkflow();
 
 private:
+    enum class BackendTaskKind
+    {
+        none,
+        healthCheck,
+        submitGeneration,
+        pollGeneration,
+    };
+
+    struct BackendTaskResult final
+    {
+        BackendTaskKind kind = BackendTaskKind::none;
+        PluginHealthCheckResult health;
+        PluginGenerationStartResult generationStart;
+        PluginGenerationPollResult generationPoll;
+    };
+
+    void scheduleHealthCheck();
+    void scheduleGenerationStart();
+    void scheduleGenerationPoll();
+    void applyCompletedTask(const BackendTaskResult& taskResult);
+    void clearGeneratedResults();
+
     PluginState state_;
+    PluginBackendClient backendClient_;
+    juce::ThreadPool backendThreadPool_ {1};
+    juce::CriticalSection backendTaskLock_;
+    std::optional<BackendTaskResult> completedBackendTask_;
+    std::atomic<bool> backendTaskRunning_ {false};
+    juce::uint32 lastHealthCheckAtMs_ = 0;
+    juce::uint32 lastPollRequestAtMs_ = 0;
+    juce::String lastHealthCheckedBaseUrl_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR(ACEStepVST3AudioProcessor)
 };

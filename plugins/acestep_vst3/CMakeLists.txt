@@ -35,7 +35,10 @@ juce_generate_juce_header(acestep_vst3)
 target_sources(
     acestep_vst3
     PRIVATE
+        src/PluginBackendClient.cpp
         src/PluginEditor.cpp
+        src/PluginEditorState.cpp
+        src/PluginEnums.cpp
         src/PluginProcessor.cpp
         src/PluginState.cpp
 )
