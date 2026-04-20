@@ -34,6 +34,35 @@ For a different Python/torch/CUDA combo, browse
 and pick the matching wheel, or build from source via
 `uv pip install flash-attn --no-build-isolation` (slow).
 
+## ⚠️ torchcodec must match torch (audio export)
+
+Audio export (MP3/WAV) goes through `torchcodec`, whose compiled `.so`
+is ABI-locked to a specific PyTorch minor version. The pin in this repo
+is `torchcodec>=0.9.1,<0.11`, which is the only family compatible with
+the pinned `torch 2.10`. If you ever see something like:
+
+```
+OSError: libtorchcodec_core8.so: undefined symbol: torch_dtype_float4_e2m1fn_x2
+```
+
+(buried inside the FFmpeg-version-8 sub-traceback of a
+`Could not load libtorchcodec` error), that means a newer `torchcodec`
+got resolved and you have to pin it back:
+
+```bash
+uv pip install 'torchcodec>=0.9.1,<0.11'
+```
+
+Compatibility table: https://github.com/pytorch/torchcodec#installing-torchcodec
+(`0.10` ↔ `torch 2.10`, `0.11` ↔ `torch 2.11`, etc.)
+
+You also need a system FFmpeg in `[4, 8]` providing `libavutil` /
+`libavcodec` / `libavformat` shared libs. On Ubuntu:
+
+```bash
+sudo apt install -y ffmpeg
+```
+
 ## API server
 
 From the repo root:
@@ -41,6 +70,25 @@ From the repo root:
 ```bash
 uv run acestep-api --host 0.0.0.0 --port 8001
 ```
+
+### Default DiT model
+
+This fork pins the **default primary DiT model to
+`acestep-v15-xl-base`** (the 4B XL series released by ACE-Step on
+2026-04-02; ≥12 GB VRAM with offload, ≥20 GB recommended). The model is
+auto-downloaded from `ACE-Step/acestep-v15-xl-base` on first start and
+cached under `checkpoints/acestep-v15-xl-base/`.
+
+To use a different model without changing code, set
+`ACESTEP_CONFIG_PATH` before launching, e.g.:
+
+```bash
+ACESTEP_CONFIG_PATH=acestep-v15-xl-turbo uv run acestep-api --host 0.0.0.0 --port 8001
+ACESTEP_CONFIG_PATH=acestep-v15-turbo    uv run acestep-api --host 0.0.0.0 --port 8001  # previous default
+```
+
+Per-request override is also supported via the `model` field on the
+`/release_task` payload.
 
 Tmux version:
 

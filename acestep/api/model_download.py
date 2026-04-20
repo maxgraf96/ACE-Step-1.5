@@ -15,6 +15,13 @@ MODEL_REPO_MAPPING = {
     "acestep-v15-base": "ACE-Step/acestep-v15-base",
     "acestep-v15-sft": "ACE-Step/acestep-v15-sft",
     "acestep-v15-turbo-shift3": "ACE-Step/acestep-v15-turbo-shift3",
+    # XL (4B DiT) variants live in their own per-model HuggingFace repos,
+    # not the unified Ace-Step1.5 repo. Without explicit mappings here,
+    # ensure_model_downloaded would fall back to the unified repo and
+    # download the wrong checkpoints.
+    "acestep-v15-xl-base": "ACE-Step/acestep-v15-xl-base",
+    "acestep-v15-xl-sft": "ACE-Step/acestep-v15-xl-sft",
+    "acestep-v15-xl-turbo": "ACE-Step/acestep-v15-xl-turbo",
 }
 
 DEFAULT_REPO_ID = "ACE-Step/Ace-Step1.5"

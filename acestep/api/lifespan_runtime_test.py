@@ -45,7 +45,7 @@ class LifespanRuntimeTests(unittest.TestCase):
 
         self.assertEqual(200, app.state.job_queue.maxsize)
         self.assertEqual(5.0, app.state.avg_job_seconds)
-        self.assertEqual("acestep-v15-turbo", app.state._config_path)
+        self.assertEqual("acestep-v15-xl-base", app.state._config_path)
         self.assertIs(app.state.handler, handler)
         self.assertIs(app.state.llm_handler, llm_handler)
         self.assertIsNone(runtime.handler2)

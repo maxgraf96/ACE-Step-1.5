@@ -46,7 +46,7 @@ def do_model_initialization(
         print("[API Server] No GPU detected, running on CPU")
 
     project_root = get_project_root()
-    config_path = os.getenv("ACESTEP_CONFIG_PATH", "acestep-v15-turbo")
+    config_path = os.getenv("ACESTEP_CONFIG_PATH", "acestep-v15-xl-base")
     device = os.getenv("ACESTEP_DEVICE", "auto")
     use_flash_attention = env_bool("ACESTEP_USE_FLASH_ATTENTION", True)
 
