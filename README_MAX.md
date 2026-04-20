@@ -2,6 +2,38 @@
 
 Launch commands for this ACE-Step fork on the GPU server, with external access enabled via `0.0.0.0`.
 
+## ⚠️ Required: install flash-attn first
+
+`flash_attn` is in `requirements.txt` / `pyproject.toml` but isn't always installed correctly and must be
+installed manually into the project venv. Without it, nano-vllm falls back
+to an SDPA path that is incompatible with CUDA-graph capture; capture
+aborts at startup with `cudaErrorStreamCaptureInvalidated` and poisons
+torch's CUDA Philox RNG, after which **every generation job fails** with:
+
+```
+RuntimeError: Offset increment outside graph capture encountered unexpectedly
+```
+
+(at `torch.multinomial` in `acestep/llm_inference.py::_sample_tokens`).
+
+Install a prebuilt wheel that matches the Python / torch / CUDA combo
+this repo pins (Python 3.12, torch 2.10, CUDA 12.8):
+
+```bash
+uv pip install https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.0/flash_attn-2.8.3+cu128torch2.10-cp312-cp312-linux_x86_64.whl
+```
+
+Verify:
+
+```bash
+.venv/bin/python -c "import flash_attn; print(flash_attn.__version__)"
+```
+
+For a different Python/torch/CUDA combo, browse
+[mjun0812/flash-attention-prebuild-wheels releases](https://github.com/mjun0812/flash-attention-prebuild-wheels/releases)
+and pick the matching wheel, or build from source via
+`uv pip install flash-attn --no-build-isolation` (slow).
+
 ## API server
 
 From the repo root:
