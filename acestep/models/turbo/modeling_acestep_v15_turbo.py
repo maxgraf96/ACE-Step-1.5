@@ -1865,8 +1865,28 @@ class AceStepConditionGenerationModel(AceStepPreTrainedModel):
         dcw_scaler: float = 0.1,
         dcw_high_scaler: float = 0.0,
         dcw_wavelet: str = "haar",
+        # --- CFG-related params accepted for API parity but unused on turbo.
+        # Turbo models bake classifier-free guidance into the distillation
+        # weights and do NOT run a twin unconditional forward pass.  Handlers
+        # upstream already force guidance_scale=1.0 before it reaches us (see
+        # `AceStepHandler.generate_music`), and the other CFG knobs have
+        # no corresponding code path in this sampler.  We declare them
+        # explicitly so they don't disappear into `**kwargs` silently, and
+        # log an info when a caller sets a non-default value so it's visible
+        # that the knob is intentionally a no-op here.
+        diffusion_guidance_scale: float = 1.0,
+        use_adg: bool = False,
+        cfg_interval_start: float = 0.0,
+        cfg_interval_end: float = 1.0,
         **kwargs,
     ):
+        if diffusion_guidance_scale != 1.0 or use_adg or cfg_interval_start != 0.0 or cfg_interval_end != 1.0:
+            logger.info(
+                "Turbo DiT ignores CFG params (guidance_scale=%.2f, use_adg=%s, "
+                "cfg_interval=[%.2f, %.2f]); turbo is CFG-distilled.",
+                diffusion_guidance_scale, use_adg, cfg_interval_start, cfg_interval_end,
+            )
+
         # Valid shifts: only discrete values 1, 2, 3 are supported
         VALID_SHIFTS = [1.0, 2.0, 3.0]
         

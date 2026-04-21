@@ -1869,6 +1869,7 @@ class AceStepConditionGenerationModel(AceStepPreTrainedModel):
         sampler_mode: str = "euler",
         velocity_norm_threshold: float = 0.0,
         velocity_ema_factor: float = 0.0,
+        timesteps: Optional[torch.Tensor] = None,
         dcw_enabled: bool = False,
         dcw_mode: str = "low",
         dcw_scaler: float = 0.1,
@@ -1938,10 +1939,15 @@ class AceStepConditionGenerationModel(AceStepPreTrainedModel):
         # Calculate cover steps based on audio_cover_strength
         cover_steps = int(infer_steps * audio_cover_strength)
         device, dtype = context_latents.device, context_latents.dtype
-        t = torch.linspace(1.0, 0.0, infer_steps + 1, device=device, dtype=dtype)
-        # Apply shift transformation to timesteps if shift != 1.0
-        if shift != 1.0:
-            t = shift * t / (1 + (shift - 1) * t)
+        # Use custom timesteps if provided, otherwise compute from infer_steps and shift
+        if timesteps is not None:
+            t = timesteps.to(device=device, dtype=dtype)
+            infer_steps = len(t) - 1  # Override infer_steps based on timesteps length
+        else:
+            t = torch.linspace(1.0, 0.0, infer_steps + 1, device=device, dtype=dtype)
+            # Apply shift transformation to timesteps if shift != 1.0
+            if shift != 1.0:
+                t = shift * t / (1 + (shift - 1) * t)
         if use_progress_bar:
             iterator = tqdm(zip(t[:-1], t[1:]), total=infer_steps)
         else:
