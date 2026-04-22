@@ -80,6 +80,12 @@ class LLMHandler:
         self._mlx_model = None
         self._mlx_model_path = None
 
+        # A/B toggle: when True, use the pre-fix prompt format for CFG uncond
+        # (keeps caption+lyrics in uncond, closes the assistant turn with <|im_end|>
+        # before codes). Intended for manual comparison against the training-aligned
+        # format only.
+        self.use_legacy_cfg_prompt = False
+
     def _clear_accelerator_cache(self) -> None:
         """Release freed accelerator memory back to the driver.
 
@@ -375,15 +381,20 @@ class LLMHandler:
         """Build unconditional prompt for CFG based on generation phase and batch mode"""
         if is_batch or generation_phase == "codes":
             # Codes phase or batch mode: use empty CoT in unconditional prompt
-            return self.build_formatted_prompt_with_cot(
+            prompt = self.build_formatted_prompt_with_cot(
                 caption, lyrics, cot_text, is_negative_prompt=True, negative_prompt=negative_prompt
             )
         else:
             # CoT phase (single mode only): unconditional prompt
             # If negative_prompt is provided, use it as caption; otherwise remove caption and keep only lyrics
-            return self.build_formatted_prompt(
+            prompt = self.build_formatted_prompt(
                 caption, lyrics, is_negative_prompt=True, generation_phase="cot", negative_prompt=negative_prompt
             )
+        logger.info(
+            f"CFG unconditional prompt (phase={generation_phase}, is_batch={is_batch}, "
+            f"negative_prompt={negative_prompt!r}):\n{prompt}"
+        )
+        return prompt
 
     def _load_pytorch_model(self, model_path: str, device: str) -> Tuple[bool, str]:
         """Load PyTorch model from path and return (success, status_message)"""
@@ -1712,45 +1723,54 @@ class LLMHandler:
         if self.llm_tokenizer is None:
             raise ValueError("LLM tokenizer is not initialized. Call initialize() first.")
 
-        if is_negative_prompt:
-            # Unconditional prompt for codes phase
-            # Check if user provided a meaningful negative prompt
-            has_negative_prompt = self._has_meaningful_negative_prompt(negative_prompt)
-
-            # Use empty CoT for unconditional
-            cot_for_prompt = "<think>\n</think>"
-
-            if has_negative_prompt:
-                # If negative prompt provided, use it as caption
-                caption_for_prompt = negative_prompt
+        if self.use_legacy_cfg_prompt:
+            # Legacy (pre-fix) path kept for manual A/B comparison. Uncond keeps
+            # the caption+lyrics wrapper and the assistant turn is closed with
+            # <|im_end|> before codes are generated.
+            if is_negative_prompt:
+                has_negative_prompt = self._has_meaningful_negative_prompt(negative_prompt)
+                cot_for_prompt = "<think>\n</think>"
+                caption_for_prompt = negative_prompt if has_negative_prompt else caption
             else:
-                # No negative prompt: use original caption
+                cot_for_prompt = cot_text
                 caption_for_prompt = caption
+            user_prompt = f"# Caption\n{caption_for_prompt}\n\n# Lyric\n{lyrics}\n"
+            formatted = self.llm_tokenizer.apply_chat_template(
+                [
+                    {"role": "system", "content": f"# Instruction\n{DEFAULT_LM_INSTRUCTION}\n\n"},
+                    {"role": "user", "content": user_prompt},
+                    {"role": "assistant", "content": cot_for_prompt},
+                ],
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+            if not formatted.endswith('\n'):
+                formatted += '\n'
+            return formatted
+
+        if is_negative_prompt:
+            # Match training CFG-dropout format: user message is the raw negative prompt
+            # (the literal "NO USER INPUT" when no override), NOT wrapped in
+            # "# Caption\n...\n\n# Lyric\n...\n".
+            has_negative_prompt = self._has_meaningful_negative_prompt(negative_prompt)
+            cot_for_prompt = "<think>\n</think>"
+            user_prompt = negative_prompt if has_negative_prompt else "NO USER INPUT"
         else:
-            # Conditional prompt: use the full CoT and original caption
             cot_for_prompt = cot_text
-            caption_for_prompt = caption
+            user_prompt = f"# Caption\n{caption}\n\n# Lyric\n{lyrics}\n"
 
-        # Build user prompt with caption and lyrics ONLY (no COT)
-        # COT should be in the assistant's message, not user's
-        user_prompt = f"# Caption\n{caption_for_prompt}\n\n# Lyric\n{lyrics}\n"
-
-        # Build the chat with assistant message containing the COT
-        # The model will continue generation after the COT
+        # Keep the assistant turn OPEN so the model continues inside it with audio
+        # codes, matching the training layout `<think>...</think>{codes}<|im_end|>`.
+        # Adding cot as a role="assistant" message would close the turn with <|im_end|>.
         formatted = self.llm_tokenizer.apply_chat_template(
             [
                 {"role": "system", "content": f"# Instruction\n{DEFAULT_LM_INSTRUCTION}\n\n"},
                 {"role": "user", "content": user_prompt},
-                {"role": "assistant", "content": cot_for_prompt},
             ],
             tokenize=False,
-            add_generation_prompt=False,  # Don't add generation prompt, COT is already in assistant
+            add_generation_prompt=True,
         )
-
-        # Add a newline after </think> so model generates audio codes on next line
-        if not formatted.endswith('\n'):
-            formatted += '\n'
-
+        formatted += cot_for_prompt
         return formatted
 
     def build_formatted_prompt_for_understanding(

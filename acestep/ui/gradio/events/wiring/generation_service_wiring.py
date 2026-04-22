@@ -48,6 +48,15 @@ def register_generation_service_handlers(
         outputs=[generation_section["language_dropdown"]],
     )
 
+    def _set_legacy_cfg_prompt(enabled):
+        llm_handler.use_legacy_cfg_prompt = bool(enabled)
+
+    generation_section["lm_use_legacy_cfg_prompt"].change(
+        fn=_set_legacy_cfg_prompt,
+        inputs=[generation_section["lm_use_legacy_cfg_prompt"]],
+        outputs=[],
+    )
+
     generation_section["config_path"].change(
         fn=gen_h.update_model_type_settings,
         inputs=[generation_section["config_path"], generation_section["generation_mode"]],
