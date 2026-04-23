@@ -173,7 +173,7 @@
     "velocity_ema_factor_info": "Blend current velocity prediction with the previous step via exponential moving average. Smooths the denoising trajectory for cleaner output. 0 = disabled. Values around 0.05–0.2 work well. Start with 0.1 if experimenting.",
     "dcw_section": "🧪 DCW – Differential Correction in Wavelet domain (experimental)",
     "dcw_enabled_label": "Enable DCW",
-    "dcw_enabled_info": "Opt-in sampler-side correction for SNR-t bias (CVPR 2026, arXiv:2604.16044). Applies a per-band wavelet-domain correction after each diffusion step. Off by default.",
+    "dcw_enabled_info": "Sampler-side correction for SNR-t bias (CVPR 2026, arXiv:2604.16044). Applies a per-band wavelet-domain correction after each diffusion step. On by default; uncheck for a clean A/B against the uncorrected sampler.",
     "dcw_mode_label": "DCW Mode",
     "dcw_mode_info": "low: correct low-frequency band only (matches the paper's README example; our recommended starting point). high: correct high-frequency band only. double: correct both bands with independent scalers (ACE-Step extension — not in the reference implementation). pix: direct latent-space correction, no wavelet transform.",
     "dcw_scaler_label": "DCW Scaler",

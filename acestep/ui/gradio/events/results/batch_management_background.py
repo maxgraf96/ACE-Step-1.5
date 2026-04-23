@@ -90,7 +90,7 @@ def generate_next_batch_background(
             sampler_mode=params.get("sampler_mode", "euler"),
             velocity_norm_threshold=params.get("velocity_norm_threshold", 0.0),
             velocity_ema_factor=params.get("velocity_ema_factor", 0.0),
-            dcw_enabled=params.get("dcw_enabled", False),
+            dcw_enabled=params.get("dcw_enabled", True),
             dcw_mode=params.get("dcw_mode", "low"),
             dcw_scaler=params.get("dcw_scaler", 0.02),
             dcw_high_scaler=params.get("dcw_high_scaler", 0.0),

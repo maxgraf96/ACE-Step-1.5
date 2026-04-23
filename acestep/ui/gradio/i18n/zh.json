@@ -173,7 +173,7 @@
     "velocity_ema_factor_info": "通过指数移动平均平滑去噪轨迹。0 = 禁用。0.05-0.2之间效果较好。",
     "dcw_section": "🧪 DCW — 小波域差分校正（实验性）",
     "dcw_enabled_label": "启用 DCW",
-    "dcw_enabled_info": "可选的采样器端 SNR-t 偏差校正（CVPR 2026，arXiv:2604.16044）。在每一步去噪后，在小波域对频带逐个施加差分修正。默认关闭。",
+    "dcw_enabled_info": "采样器端 SNR-t 偏差校正（CVPR 2026，arXiv:2604.16044）。在每一步去噪后，在小波域对频带逐个施加差分修正。默认开启；如需与未校正采样器做 A/B 对照，可取消勾选。",
     "dcw_mode_label": "DCW 模式",
     "dcw_mode_info": "low：仅校正低频带（与论文 README 示例一致，我们推荐的起点）。high：仅校正高频带。double：双频带各自校正（ACE-Step 扩展，参考实现里没有此模式）。pix：不做小波变换，直接在潜在空间做校正。",
     "dcw_scaler_label": "DCW 强度",

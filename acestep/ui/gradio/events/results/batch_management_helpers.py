@@ -120,7 +120,7 @@ def _apply_param_defaults(params):
         "shift": 1.0, "infer_method": "ode",
         "sampler_mode": "euler", "velocity_norm_threshold": 0.0,
         "velocity_ema_factor": 0.0,
-        "dcw_enabled": False, "dcw_mode": "low", "dcw_scaler": 0.02,
+        "dcw_enabled": True, "dcw_mode": "low", "dcw_scaler": 0.02,
         "dcw_high_scaler": 0.0, "dcw_wavelet": "haar",
         "custom_timesteps": "",
         "audio_format": "flac",

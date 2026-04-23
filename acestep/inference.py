@@ -139,9 +139,9 @@ class GenerationParams:
     velocity_norm_threshold: float = 0.0  # Clamp velocity prediction norms (0 = disabled, try 2.0)
     velocity_ema_factor: float = 0.0  # Velocity EMA smoothing (0 = disabled, try 0.1)
     # DCW — Differential Correction in Wavelet domain (CVPR 2026, arXiv:2604.16044).
-    # Off by default; enable to mitigate SNR-t bias via per-band wavelet-domain
-    # correction at each sampler step.  Requires `pytorch_wavelets` + `PyWavelets`.
-    dcw_enabled: bool = False
+    # On by default to mitigate SNR-t bias via per-band wavelet-domain correction
+    # at each sampler step.  Uses `pytorch_wavelets` + `PyWavelets` (managed deps).
+    dcw_enabled: bool = True
     dcw_mode: str = "low"           # "low" | "high" | "double" | "pix"
     dcw_scaler: float = 0.02        # low-band scaler (or single scaler for "high"/"pix")
     dcw_high_scaler: float = 0.0    # high-band scaler (used only in "double" mode)

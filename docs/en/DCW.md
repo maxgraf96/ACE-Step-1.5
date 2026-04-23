@@ -68,7 +68,7 @@ are forwarded through the generation handler chain into the base model's
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `dcw_enabled` | `bool` | `False` | Master switch. Off preserves current behaviour bit-for-bit. |
+| `dcw_enabled` | `bool` | `True` | Master switch. Set to `False` for a clean A/B against the uncorrected sampler. |
 | `dcw_mode` | `str` | `"low"` | One of `"low"`, `"high"`, `"double"`, `"pix"`. |
 | `dcw_scaler` | `float` | `0.02` | Low-band correction strength (or the single scaler for `"high"` / `"pix"`). Usable range `0–0.1`. |
 | `dcw_high_scaler` | `float` | `0.0` | High-band correction strength (used only when `dcw_mode == "double"`). Usable range `0–0.1`. |
@@ -123,8 +123,10 @@ result = generate_music(
 ### Usage example (Gradio UI)
 
 Open the standard Gradio UI, expand **Advanced DiT** → **🧪 DCW – Differential
-Correction in Wavelet domain (experimental)**, tick **Enable DCW**, and tune
-the four sliders/dropdowns. Off by default; toggle on for an A/B comparison.
+Correction in Wavelet domain (experimental)**, and tune the four
+sliders/dropdowns inside. **Enable DCW** is on by default with
+`mode="low"`, `scaler=0.02`, `wavelet="haar"` — uncheck it to A/B
+against the uncorrected sampler.
 
 ## Recommended starting values
 
