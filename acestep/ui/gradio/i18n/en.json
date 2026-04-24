@@ -42,6 +42,8 @@
     "model_path_info": "The directory containing model config and architecture files. Auto-detected from your checkpoint selection. Only change this if you have a custom model setup.",
     "device_label": "Device",
     "device_info": "Which hardware to run on. 'auto' picks the best available (recommended). 'cuda' = NVIDIA GPU, 'mps' = Apple Silicon, 'xpu' = Intel GPU, 'cpu' = very slow, last resort.",
+    "vae_label": "VAE",
+    "vae_info": "Which VAE to load. 'official' is the bundled Oobleck VAE that ships with the main model. Community fine-tunes (e.g. 'scragvae') are auto-downloaded into <checkpoints>/<name>/ on first use. Override with the ACESTEP_VAE_CHECKPOINT env var.",
     "lm_model_path_label": "5Hz LM Model Path",
     "lm_model_path_info": "The language model that powers Think mode, CoT metadata, caption enhancement, and semantic code generation. Required for Think mode. Larger LMs produce better results but need more VRAM.",
     "backend_label": "5Hz LM Backend",

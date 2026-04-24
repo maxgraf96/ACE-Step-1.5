@@ -108,6 +108,7 @@ def register_generation_service_handlers(
             generation_section["mlx_dit_checkbox"],
             generation_section["generation_mode"],
             generation_section["batch_size_input"],
+            generation_section["vae_checkpoint"],
         ],
         outputs=[
             generation_section["init_status"],
