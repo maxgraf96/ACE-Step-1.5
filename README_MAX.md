@@ -74,17 +74,18 @@ uv run acestep-api --host 0.0.0.0 --port 8001
 ### Default DiT model
 
 This fork pins the **default primary DiT model to
-`acestep-v15-xl-base`** (the 4B XL series released by ACE-Step on
-2026-04-02; ≥12 GB VRAM with offload, ≥20 GB recommended). The model is
-auto-downloaded from `ACE-Step/acestep-v15-xl-base` on first start and
-cached under `checkpoints/acestep-v15-xl-base/`.
+`acestep-v15-xl-turbo`** (the 4B XL turbo variant from the XL series
+released by ACE-Step on 2026-04-02; ≥12 GB VRAM with offload, ≥20 GB
+recommended). The model is auto-downloaded from
+`ACE-Step/acestep-v15-xl-turbo` on first start and cached under
+`checkpoints/acestep-v15-xl-turbo/`.
 
 To use a different model without changing code, set
 `ACESTEP_CONFIG_PATH` before launching, e.g.:
 
 ```bash
-ACESTEP_CONFIG_PATH=acestep-v15-xl-turbo uv run acestep-api --host 0.0.0.0 --port 8001
-ACESTEP_CONFIG_PATH=acestep-v15-turbo    uv run acestep-api --host 0.0.0.0 --port 8001  # previous default
+ACESTEP_CONFIG_PATH=acestep-v15-xl-base uv run acestep-api --host 0.0.0.0 --port 8001
+ACESTEP_CONFIG_PATH=acestep-v15-turbo   uv run acestep-api --host 0.0.0.0 --port 8001  # pre-XL default
 ```
 
 Per-request override is also supported via the `model` field on the
